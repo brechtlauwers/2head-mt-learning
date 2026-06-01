@@ -11,7 +11,7 @@ To resolve this structurally, this thesis adapts the two-head multi-task framewo
 The architecture is evaluated across four benchmark datasets (ModelNet40, SensIT Vehicle, UCI-HAR, and the YouTube Multiview Video Games Dataset), under four imputation strategies, four fusion configurations, and multiple missing rates. The two-head architecture consistently and significantly outperforms the single-head baseline, with gains that scale increasingly with missing rate and inversely with imputation quality. Gradient alignment analysis confirms that the cosine similarity between clean and imputed gradient signals remains persistently near zero throughout training regardless of imputation method. This provides direct evidence that the conflict is inherent to the data mixing rather than to reconstruction quality. A computational analysis demonstrates that these gains come at negligible parameter and computational overhead, resulting in a practically deployable solution for incomplete multi-view learning.
 
 ** Two-Head Multi-Task Architecture
-[[file:./research/img/mt_arch_right_side.png]]
+[[file:./data/img/mt_arch_right_side.png]]
 
 ** Structure
 #+begin_src text
