@@ -1,6 +1,8 @@
 * Incomplete Multi-view Learning
 Official code repository for the master's thesis in Applied Sciences and Engineering: Computer Science (AI) at the Vrije Universiteit Brussel (VUB).
 
+Thesis subject: Incomplete Multi-View Learning, A Two-Head Architecture for Robust Missing Data Handling. 
+
 ** Abstract
 Multi-view machine learning systems increasingly depend on the simultaneous availability of multiple sensor streams, yet real-world deployments often violate this assumption through hardware failure, environmental interference, and transmission loss. The standard approach is to either drop or impute the missing views, so that the classifier receives a supposedly complete input. This thesis identifies and addresses a consequence of imputation that has received insufficient attention: imputed views do not follow the same statistical distribution as genuine sensor readings. Mixing clean and imputed samples in a single training set forces the shared classifier to simultaneously satisfy two incompatible gradient signals. This gradient conflict degrades the learned decision boundary in proportion to the severity of the distributional mismatch.
 
