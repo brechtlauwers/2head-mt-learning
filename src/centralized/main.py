@@ -32,6 +32,14 @@ def main():
     parser.add_argument("--fusion_type", type=str, default="mid_late",
                         choices=["early", "mid", "mid_late", "late"],
                         help="Fusion strategy to evaluate.")
+    parser.add_argument("--extractor_nonlinear", action="store_true",
+                        help="Use a nonlinear (Linear+ReLU) per-view extractor instead of plain Linear.")
+    parser.add_argument("--backbone_depth", type=int, default=None,
+                        help="Number of Linear->ReLU blocks in the post-fusion backbone. "
+                             "Default (None) reproduces the original thesis architecture.")
+    parser.add_argument("--missing_rate_single", type=float, default=None,
+                        help="If set, generate_results only runs this one missing rate "
+                             "instead of the full [0,0.1,0.3,0.5,0.7] sweep.")
     parser.add_argument("--missing_rate", type=float, default=0.5,
                         help="Missing rate for the views (e.g., 0.5 for 50%).")
     parser.add_argument("--seeds", type=int, nargs='+', default=[50],
@@ -47,10 +55,13 @@ def main():
 # Route to the correct function based on the argument
     if args.experiment == "generate_results":
         generate_results(
-            dataset_name=args.dataset, 
-            experiment_type=args.imputation_type, 
+            dataset_name=args.dataset,
+            experiment_type=args.imputation_type,
             seeds=args.seeds,
-            fusion_type=args.fusion_type
+            fusion_type=args.fusion_type,
+            extractor_nonlinear=args.extractor_nonlinear,
+            backbone_depth=args.backbone_depth,
+            missing_rates=[args.missing_rate_single] if args.missing_rate_single is not None else None
         )
     elif args.experiment == "mod_dominance":
         study_mod_dominance(dataset_name=args.dataset, seeds=args.seeds, epochs=args.epochs)

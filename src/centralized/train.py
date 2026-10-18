@@ -22,6 +22,8 @@ def train_and_eval(model, trainloader, testloader, valloader=None, epochs=10, lr
     for epoch in range(epochs):
         running_loss, correct, total = 0.0, 0, 0
         grad_sim_sum, grad_sim_count = 0.0, 0
+        neg_sim_count = 0
+        norm_c_sum, norm_i_sum, norm_count = 0.0, 0.0, 0
 
         model.train()
 
@@ -42,30 +44,30 @@ def train_and_eval(model, trainloader, testloader, valloader=None, epochs=10, lr
             # Gradient similarity calculations
             # Only compute if both clean and imputed samples in batch
             if clean_mask.any() and aug_mask.any():
-                # Get distinct gradients
+                # Get distinct gradients for clean vs. imputed subsets
                 loss_clean = criterion(logits[clean_mask], labels[clean_mask])
-                #loss_imputed = criterion(logits[aug_mask], labels[aug_mask])
+                loss_imputed = criterion(logits[aug_mask], labels[aug_mask])
 
                 # Get the parameters of the shared classifier head
                 shared_params = list(model.classifier.parameters())
 
-                # Calculate gradients with respect to the shared classifier
+                # Calculate gradients w.r.t. the shared classifier, clean vs. imputed
                 grad_c = torch.autograd.grad(loss_clean, shared_params, retain_graph=True, allow_unused=True)
-                grad_total = torch.autograd.grad(loss, shared_params, retain_graph=True, allow_unused=True)
-                
+                grad_i = torch.autograd.grad(loss_imputed, shared_params, retain_graph=True, allow_unused=True)
+
                 flat_grad_c = torch.cat([g.contiguous().view(-1) for g in grad_c if g is not None])
-                flat_grad_total = torch.cat([g.contiguous().view(-1) for g in grad_total if g is not None])
+                flat_grad_i = torch.cat([g.contiguous().view(-1) for g in grad_i if g is not None])
 
-                #grad_i = torch.autograd.grad(loss_imputed, shared_params, retain_graph=True, allow_unused=True)
-                #flat_grad_i = torch.cat([g.contiguous().view(-1) for g in grad_i if g is not None])
-
-                #if flat_grad_c.numel() > 0 and flat_grad_i.numel() > 0:
-                #    sim = F.cosine_similarity(flat_grad_c, flat_grad_i, dim=0).item()
-
-                if flat_grad_c.numel() > 0 and flat_grad_total.numel() > 0:
-                    sim = F.cosine_similarity(flat_grad_c, flat_grad_total, dim=0).item()
+                if flat_grad_c.numel() > 0 and flat_grad_i.numel() > 0:
+                    sim = F.cosine_similarity(flat_grad_c, flat_grad_i, dim=0).item()
                     grad_sim_sum += sim
                     grad_sim_count += 1
+                    if sim < 0:
+                        neg_sim_count += 1
+
+                    norm_c_sum += flat_grad_c.norm().item()
+                    norm_i_sum += flat_grad_i.norm().item()
+                    norm_count += 1
             
             # Backward pass
             loss.backward()
@@ -78,7 +80,13 @@ def train_and_eval(model, trainloader, testloader, valloader=None, epochs=10, lr
             correct += (predicted == labels).sum().item()
 
         avg_grad_sim = grad_sim_sum / grad_sim_count if grad_sim_count > 0 else 0.0
-        grad_sim_history.append(avg_grad_sim)
+        neg_frac = neg_sim_count / grad_sim_count if grad_sim_count > 0 else 0.0
+        avg_norm_c = norm_c_sum / norm_count if norm_count > 0 else 0.0
+        avg_norm_i = norm_i_sum / norm_count if norm_count > 0 else 0.0
+        grad_sim_history.append({
+            "sim": avg_grad_sim, "neg_frac": neg_frac,
+            "norm_c": avg_norm_c, "norm_i": avg_norm_i
+        })
 
         epoch_loss = running_loss / max(1, len(trainloader))
         epoch_acc = correct / total

@@ -18,7 +18,8 @@ from centralized.config import DEVICE
 
 def run_experiment(
         dataset_name: str, experiment_type: str, missing_rate: float,
-        seed: int, use_validation: bool = True, fusion_type: str = "mid_late"
+        seed: int, use_validation: bool = True, fusion_type: str = "mid_late",
+        extractor_nonlinear: bool = False, backbone_depth: int = None
 ):
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -45,7 +46,9 @@ def run_experiment(
             sensor_dims=sensor_dims,
             hidden_dim=hidden_dim,
             num_classes=num_classes,
-            fusion_type=fusion_type
+            fusion_type=fusion_type,
+            extractor_nonlinear=extractor_nonlinear,
+            backbone_depth=backbone_depth
         )
         print(f"Model size: {count_params(model):.3f}M Parameters")
         final_acc, grad_sim_history = train_and_eval_mt(
@@ -57,7 +60,9 @@ def run_experiment(
             sensor_dims=sensor_dims,
             hidden_dim=hidden_dim,
             num_classes=num_classes,
-            fusion_type=fusion_type
+            fusion_type=fusion_type,
+            extractor_nonlinear=extractor_nonlinear,
+            backbone_depth=backbone_depth
         )
         print(f"Model size: {count_params(model):.3f}M Parameters")
         final_acc, grad_sim_history = train_and_eval(
@@ -66,12 +71,17 @@ def run_experiment(
         )
 
     plt.figure(figsize=(6, 4))
-    plt.plot(range(1, epochs + 1), grad_sim_history, marker='o', color='purple', linewidth=2)
+    if "2head" in experiment_type:
+        sims = grad_sim_history  # train_and_eval_mt still returns a flat list of floats
+    else:
+        sims = [h["sim"] for h in grad_sim_history]  # train_and_eval now returns dicts
+    plt.plot(range(1, epochs + 1), sims, marker='o', color='purple', linewidth=2)
     plt.title(f"Gradient Sim over time\n({dataset_name}, {experiment_type}, Missing: {missing_rate*100}%)", fontsize=12)
     plt.xlabel("Epoch", fontsize=10)
     plt.ylabel("Cosine Similarity", fontsize=10)
-    
-    plt.ylim(0.0, 1.05) 
+
+    plt.ylim(-1.05, 1.05)
+    plt.axhline(0.0, color='gray', linewidth=1, linestyle=':')
     plt.grid(True, linestyle='--', alpha=0.7)
     plt.tight_layout()
     
@@ -83,8 +93,11 @@ def run_experiment(
     return final_acc
 
 
-def generate_results(dataset_name: str, experiment_type: str, seeds: list[int], fusion_type: str = "mid_late"):
-    missing_rates = [0.0, 0.1, 0.3, 0.5, 0.7]
+def generate_results(dataset_name: str, experiment_type: str, seeds: list[int], fusion_type: str = "mid_late",
+                     extractor_nonlinear: bool = False, backbone_depth: int | None = None,
+                     missing_rates: list[float] = None):
+    if missing_rates is None:
+        missing_rates = [0.0, 0.1, 0.3, 0.5, 0.7]
 
     results_base = {rate: [] for rate in missing_rates}
     results_mt = {rate: [] for rate in missing_rates}
@@ -95,27 +108,31 @@ def generate_results(dataset_name: str, experiment_type: str, seeds: list[int], 
 
             if rate == 0.0:
                 acc_base = run_experiment(
-                    dataset_name, "baseline", rate, seed, fusion_type=fusion_type
+                    dataset_name, "baseline", rate, seed, fusion_type=fusion_type,
+                    extractor_nonlinear=extractor_nonlinear, backbone_depth=backbone_depth
                 )
                 results_base[rate].append(acc_base)
                 print(f"-> No missing baseline acc: {acc_base*100:.2f}%")
                 
                 acc_mt = run_experiment(
-                    dataset_name, "2head_baseline", rate, seed, fusion_type=fusion_type
+                    dataset_name, "2head_baseline", rate, seed, fusion_type=fusion_type,
+                    extractor_nonlinear=extractor_nonlinear, backbone_depth=backbone_depth
                 )
                 results_mt[rate].append(acc_mt)
                 print(f"-> No missing multitask acc: {acc_mt*100:.2f}%")
             else:
                 # Run base model (1 head architecture)
                 acc_base = run_experiment(
-                    dataset_name, f"impute_{experiment_type}", rate, seed, fusion_type=fusion_type
+                    dataset_name, f"impute_{experiment_type}", rate, seed, fusion_type=fusion_type,
+                    extractor_nonlinear=extractor_nonlinear, backbone_depth=backbone_depth
                 )
                 results_base[rate].append(acc_base)
                 print(f"-> Baseline peak acc: {acc_base*100:.2f}%")
 
                 # Run multi task model (2 head architecture)
                 acc_mt = run_experiment(
-                    dataset_name, f"2head_impute_{experiment_type}", rate, seed, fusion_type=fusion_type
+                    dataset_name, f"2head_impute_{experiment_type}", rate, seed, fusion_type=fusion_type,
+                    extractor_nonlinear=extractor_nonlinear, backbone_depth=backbone_depth
                 )
                 results_mt[rate].append(acc_mt)
                 print(f"-> Multitask peak acc: {acc_mt*100:.2f}%")
@@ -479,6 +496,11 @@ def plot_gradient_similarity(dataset_name: str, missing_rate: float, seed: int, 
         )
 
         all_histories[exp_type] = grad_sim_history
+        sims = [h["sim"] for h in grad_sim_history]
+        final = grad_sim_history[-1]
+        print(f"  Final epoch: cos={final['sim']:.3f}  "
+              f"neg_frac={final['neg_frac']:.2f}  "
+              f"||grad_c||={final['norm_c']:.4f}  ||grad_i||={final['norm_i']:.4f}")
 
     # Plot
     print("\nGenerating Gradient Similarity Plot...")
@@ -487,9 +509,10 @@ def plot_gradient_similarity(dataset_name: str, missing_rate: float, seed: int, 
     x_axis = range(1, epochs + 1)
     for exp_type, history in all_histories.items():
         style = imputation_methods[exp_type]
+        sims = [h["sim"] for h in history]
         plt.plot(
-            x_axis, history, 
-            label=style['label'], 
+            x_axis, sims,
+            label=style['label'],
             color=style['color'], 
             linestyle=style['linestyle'], 
             linewidth=2,
@@ -501,7 +524,8 @@ def plot_gradient_similarity(dataset_name: str, missing_rate: float, seed: int, 
     plt.ylabel("Cosine similarity (clean vs. imputed)", fontsize=11)
     plt.xticks(range(0, epochs + 1, 5))
 
-    plt.ylim(0.0, 1.05) 
+    plt.ylim(-1.05, 1.05)
+    plt.axhline(0.0, color='gray', linewidth=1, linestyle=':')
     plt.legend(fontsize=10, loc='upper right')
     plt.grid(True, linestyle='--', alpha=0.6)
     plt.tight_layout()
@@ -569,8 +593,9 @@ def plot_gradsim_vs_missing(dataset_name: str, imputation_type: str, seed: int, 
     x_axis = range(1, epochs + 1)
     for rate, history in all_histories.items():
         style = rate_styles[rate]
+        sims = [h["sim"] for h in history]
         plt.plot(
-            x_axis, history, 
+            x_axis, sims,
             label=style['label'], 
             color=style['color'], 
             linestyle=style['linestyle'], 
@@ -580,11 +605,11 @@ def plot_gradsim_vs_missing(dataset_name: str, imputation_type: str, seed: int, 
 
     plt.title(f"Gradient conflict scaling by missing rate\n({dataset_name.capitalize()}, {imputation_type.capitalize()})", fontsize=13)
     plt.xlabel("Training epoch", fontsize=11)
-    plt.ylabel("Cosine similarity (clean vs. total)", fontsize=11)
+    plt.ylabel("Cosine similarity (clean vs. imputed)", fontsize=11)
     plt.xticks(range(0, epochs + 1, 5))
-    
-    # Allow y-axis to drop below zero if the conflict is highly destructive
-    plt.ylim(-0.2, 1.05) 
+
+    plt.ylim(-1.05, 1.05)
+    plt.axhline(0.0, color='gray', linewidth=1, linestyle=':')
     
     plt.legend(fontsize=10, loc='upper right')
     plt.grid(True, linestyle='--', alpha=0.6)

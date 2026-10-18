@@ -1,51 +1,33 @@
-* Incomplete Multi-view Learning
-Official code repository for the master's thesis in Applied Sciences and Engineering: Computer Science (AI) at the Vrije Universiteit Brussel (VUB).
-
-Thesis subject: Incomplete Multi-View Learning, A Two-Head Architecture for Robust Missing Data Handling. 
+* Two-Head Routing for Incomplete Multi-View Classification
+Code for the paper /Multi-head architecture for robust imputation-based partial multi-view classification/ (B. Lauwers, F. Faramarzi Lighvan, L. Houthuys; Vrije Universiteit Brussel), submitted to /Information Fusion/. The code started as a master's thesis (Applied Sciences and Engineering: Computer Science, VUB) and was re-implemented for the paper. 
 
 ** Abstract
-Multi-view machine learning systems increasingly depend on the simultaneous availability of multiple sensor streams, yet real-world deployments often violate this assumption through hardware failure, environmental interference, and transmission loss. The standard approach is to either drop or impute the missing views, so that the classifier receives a supposedly complete input. This thesis identifies and addresses a consequence of imputation that has received insufficient attention: imputed views do not follow the same statistical distribution as genuine sensor readings. Mixing clean and imputed samples in a single training set forces the shared classifier to simultaneously satisfy two incompatible gradient signals. This gradient conflict degrades the learned decision boundary in proportion to the severity of the distributional mismatch.
-
-To resolve this structurally, this thesis adapts the two-head multi-task framework of Zhang and Ma to the incomplete multi-view setting. A shared backbone processes all samples jointly, while a routing mechanism directs complete samples to a primary classification head and imputed samples to an auxiliary head. This separation ensures the primary head's gradient signal is never contaminated by synthetic inputs, while the backbone continues to receive updates from the full dataset through the auxiliary pathway.
-
-The architecture is evaluated across four benchmark datasets (ModelNet40, SensIT Vehicle, UCI-HAR, and the YouTube Multiview Video Games Dataset), under four imputation strategies, four fusion configurations, and multiple missing rates. The two-head architecture consistently and significantly outperforms the single-head baseline, with gains that scale increasingly with missing rate and inversely with imputation quality. Gradient alignment analysis confirms that the cosine similarity between clean and imputed gradient signals remains persistently near zero throughout training regardless of imputation method. This provides direct evidence that the conflict is inherent to the data mixing rather than to reconstruction quality. A computational analysis demonstrates that these gains come at negligible parameter and computational overhead, resulting in a practically deployable solution for incomplete multi-view learning.
+Imputing missing views and training one classifier on the resulting mixture of real and imputed samples forces a single decision boundary to fit two different input distributions. We route complete samples to a primary head and samples with imputed views to an auxiliary head on top of a shared multi-view backbone, using the observed missingness mask at training and inference time. We evaluate this on ModelNet40, SensIT Vehicle, UCI-HAR and YouTube Multiview Video Games with four imputers, three fusion types (early, mid, late) and four missing rates. See the paper for the results.
 
 ** Two-Head Multi-Task Architecture
-[[file:./data/img/mt_arch_right_side.png]]
+[[file:./data/img/fig01_architecture-1.png]]
 
 ** Structure
 #+begin_src text
   .
-  ├── data                           # Data storage
-  │   └── features                   # Extracted features from datasets
-  ├── LICENSE                        # Project license
-  ├── pyproject.toml                 # Project metadata and dependencies (e.g., uv config)
-  ├── README.org                     # Main project documentation
-  └── src                            # Main source code package
-      ├── centralized                # Core thesis experiments (Multi-view learning)
-      │   ├── config.py              # Hardware and device setup
-      │   ├── data_setup.py          # Dataloaders and missing data wrappers
-      │   ├── experiments.py         # Thesis experiment logic
-      │   ├── main.py                # Clean execution entry point
-      │   ├── train.py               # PyTorch training loops
-      │   ├── utils.py               # Centralized helper functions
-      │   ├── scripts                # Utility scripts for checking and plotting
-      │   │   ├── imputation_check.py
-      │   │   └── plot_fusions.py
-      │   └── results                # Results generated from experiments
-      │       └── 2head_v1           # Plots and evaluations for 2-head architecture
-      │           ├── exp1_grad_sim  # Gradient similarity plots across datasets
-      │           │   └── ...        # (*.png files)
-      │           └── ...
-      │
-      └── core                       # Shared ML assets and neural backbones
-          ├── cpm_nets.py            # CPM generative imputation logic
-          ├── data.py                # Missing data logic & matrix generation
-          ├── datasets.py            # Multi-view dataset definitions
-          ├── dcp_nets.py            # DCP generative imputation logic
-          ├── models.py              # Neural backbones
-          ├── train.py               # Core model training logic
-          └── utils.py               # Shared core helper functions
+  ├── data/features                  # datasets go here (not in the repo, see below)
+  ├── data/img                       # architecture figure
+  ├── pyproject.toml, uv.lock        # dependencies
+  └── src
+      ├── centralized                # experiments of the paper
+      │   ├── main.py                # entry point for single experiments
+      │   ├── experiments.py         # experiment logic
+      │   ├── train.py, utils.py, config.py, data_setup.py
+      │   ├── hparam_search.py       # two-stage hyperparameter search
+      │   ├── paper_stats.py         # per-seed results, paired tests, gain-vs-MSE
+      │   ├── gradient_analysis.py   # gradient cosine and norm-ratio tracking
+      │   ├── imputation_mse.py      # imputation error per imputer
+      │   ├── run_experiments.sh     # full run of the paper experiments
+      │   └── run_yt_experiments.sh  # same for YouTube
+      └── core                       # models and imputers
+          ├── models.py              # early/mid/late fusion, single-head and two-head
+          ├── cpm_nets.py, dcp_nets.py
+          ├── data.py, datasets.py, train.py, utils.py
 #+end_src
 
 ** Reproducing the Experiments
@@ -82,29 +64,50 @@ Due to size and licensing restrictions, the raw datasets and extracted feature m
 - *Placement:* Place the extracted contents into ~data/features/youtube/~.
 
 *** Running the code
-You can run any of the thesis experiments directly from the command line using ~main.py~.
+Run everything from ~src/~ (the scripts are modules of ~centralized~).
 
-*To reproduce the main accuracy tables:* \\
+*Single experiment* (fusion types: ~early~, ~mid~, ~late~; ~--backbone_depth~ for the depth ablation):
 #+begin_src bash
-  uv run python src/centralized/main.py --experiment generate_results --dataset modelnet --fusion_type mid_late --imputation_type zero
+  cd src
+  uv run python -m centralized.main --experiment generate_results --dataset har \
+      --fusion_type mid --imputation_type zero --backbone_depth 1
 #+end_src
 
-*To test the robustness of the fusion by dropping views at inference time:* \\
+*Hyperparameter search* (stage 1: lr and width on the single-head model, stage 2: lambda on the two-head model; tuning seeds 7, 11, 13):
 #+begin_src bash
-  uv run python src/centralized/main.py --experiment inference_drop --dataset youtube
+  uv run python -m centralized.hparam_search --help
 #+end_src
 
-*To generate the gradient conflict scaling graphs:* \\
+*Per-seed accuracies, paired tests and gain vs. imputation error:*
 #+begin_src bash
-  uv run python src/centralized/main.py --experiment grad_sim_vs_missing --dataset har --imputation_type cpm
+  uv run python -m centralized.paper_stats collect --datasets har --imputations zero gaus cpm dcp \
+      --fusions early mid late --rates 0.1 0.3 0.5 0.7 --seeds 50 121 893 17 2024 --out per_seed_results.jsonl
+  uv run python -m centralized.paper_stats table --inp per_seed_results.jsonl
+  uv run python -m centralized.paper_stats gain_vs_mse --inp per_seed_results.jsonl --mse mse_results.json --fusion mid
 #+end_src
+
+*Imputation error and gradient analysis:*
+#+begin_src bash
+  uv run python -m centralized.imputation_mse --datasets har --imputations zero gaus cpm dcp --missing_rate 0.5 --seeds 50 121 893 --out mse_results.json
+  uv run python -m centralized.gradient_analysis run --dataset har --imputation zero --missing_rate 0.5 --fusion mid --seeds 50 121 893
+  uv run python -m centralized.gradient_analysis summarize --dataset har --imputation zero --missing_rate 0.5 --fusion mid
+#+end_src
+
+The full set of paper experiments is in ~src/centralized/run_experiments.sh~.
 
 ** Disclaimer
 Almost all this code is written by hand and went through multiple phases while writing my thesis. Everything is tested on an Arch Linux machine, but it is possible that some features or experiments need some small changes to make them work as expected. This is research code, not an optimized or perfectly written Python package.
 
 ** Citation
-If you find this code or thesis useful in your research, cite this work:
-(TODO if published hopefully...)
+#+begin_src bibtex
+  @article{lauwers2026twohead,
+    title   = {Multi-head architecture for robust imputation-based partial multi-view classification},
+    author  = {Lauwers, Brecht and Faramarzi Lighvan, Farnaz and Houthuys, Lynn},
+    journal = {Information Fusion},
+    year    = {2026},
+    note    = {Under review. TODO: update with volume, pages and DOI}
+  }
+#+end_src
 
 ** License
 This thesis is licensed under the MIT License. See the ~LICENSE~ file for details.
