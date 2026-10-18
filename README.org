@@ -32,7 +32,7 @@ Imputing missing views and training one classifier on the resulting mixture of r
 
 ** Reproducing the Experiments
 *** Environment Setup
-This thesis uses [[https://github.com/astral-sh/uv][uv]] for Python dependency management.
+This repo uses [[https://github.com/astral-sh/uv][uv]] for Python dependency management.
 
 #+begin_src bash
   # Install dependencies and create a virtual environment
@@ -96,7 +96,7 @@ Run everything from ~src/~ (the scripts are modules of ~centralized~).
 The full set of paper experiments is in ~src/centralized/run_experiments.sh~.
 
 ** Disclaimer
-Almost all this code is written by hand and went through multiple phases while writing my thesis. Everything is tested on an Arch Linux machine, but it is possible that some features or experiments need some small changes to make them work as expected. This is research code, not an optimized or perfectly written Python package.
+Almost all this code is written by hand and went through multiple phases while writing my thesis/paper, except for the final experiment scripts. Everything is tested on an Arch Linux machine, but it is possible that some features or experiments need some small changes to make them work as expected. This is research code, not an optimized or perfectly written Python package.
 
 ** Citation
 #+begin_src bibtex
@@ -110,4 +110,4 @@ Almost all this code is written by hand and went through multiple phases while w
 #+end_src
 
 ** License
-This thesis is licensed under the MIT License. See the ~LICENSE~ file for details.
+This paper is licensed under the MIT License. See the ~LICENSE~ file for details.
